@@ -1,0 +1,190 @@
+### Motion Tracking in Opencv Python
+### Youssef Eltuwaisy
+### 
+
+import os,sys,time
+import cv2
+import numpy as np
+import math
+
+def mouse_click(event,x,y,flags,params):
+    if event == cv2.EVENT_LBUTTONDOWN:
+        print("Left click down")
+        clicks.append((x,y))
+
+
+#Setup
+cap = cv2.VideoCapture('ShowVideo4.mp4')
+#cap = cv2.VideoCapture(0)
+
+cv2.namedWindow("FinalFrame")
+cv2.setMouseCallback("FinalFrame",mouse_click)
+x0 = 0 
+x1 = 0
+y0 = 0
+y1 = 0
+counter = 0
+counter0 = 0
+counter1 = 0
+tracer = []
+speedmap = []
+clicks = []
+pause = False
+cap.set(3,2000)
+cap.set(4,2000)
+
+
+if cap.isOpened():
+     ret, frame = cap.read()
+else:
+    ret = False
+
+while(True):
+    ret, frame0 = cap.read()
+    ret, frame1 = cap.read()
+    ret, frame9 = cap.read()
+
+    
+    
+
+#Body
+# Part 1 turn the colored image into a grey image.
+
+    frame0 = cv2.cvtColor(frame0, cv2.COLOR_BGR2GRAY )
+    frame1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY )
+# Part 2 blur the images 
+
+    frame0 = cv2.GaussianBlur(frame0, (5, 5), 0 )
+    frame1 = cv2.GaussianBlur(frame1, (5, 5), 0 )
+# Part 3 find the difference between 2 captured frames.
+
+    frame2 = cv2.absdiff(frame0, frame1 )
+# Part 4 use a threshold
+
+    _, frame3 = cv2.threshold(frame2, 20, 255, cv2.THRESH_BINARY )
+# Part 5 dilate theory
+
+    frame4 = cv2.dilate(frame3, np.ones((3, 3), np.uint8), iterations=1 )
+# Part 6 erode the dilation
+
+    frame5 = cv2.erode(frame4, np.ones((3, 3), np.uint8), iterations=1 )
+# Part 7 find contours in eroded image
+
+    contours0, ret = cv2.findContours(frame5,cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE )
+    contours1, ret = cv2.findContours(frame5,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE )
+# Part 8 draw contours
+
+    cv2.drawContours(frame9, contours0, -1, (255, 0, 0), 2 )
+    cv2.drawContours(frame9, contours1, -1, (255, 0, 0), 2 )
+# Part 9 background filter
+    fgbg = cv2.createBackgroundSubtractorMOG2()
+    frame6 = fgbg.apply(frame5 )
+# Part 10 find edges
+
+    frame7 = cv2.Canny(frame6, 50, 190, 3 )
+# Part 11 use a threshold 
+
+    ret, frame8 = cv2.threshold(frame7, 127, 255, 0 )
+# Part 12 find centroids and fill speedmap
+    centroids = []
+    blob_radius_thresh = 3
+    for c in contours1:
+        
+        # if the contour is too small, ignore it
+        if cv2.contourArea(c) > 10: 
+                continue
+        try:
+        # contour data
+            M = cv2.moments(c)
+            cx = int(M['m10']/M['m00'])
+            cy = int(M['m01']/M['m00'])
+            x,y,w,h = cv2.boundingRect(c)
+            rx = x+int(w/2)
+            ry = y+int(h/2)
+            ca = cv2.contourArea(c)
+
+        # plot contours
+            cv2.drawContours(frame9,[c],0,(0,0,255),2)
+            cv2.rectangle(frame9,(x,y),(x+w,y+h),(0,255,0),2)
+            cv2.circle(frame9,(cx,cy),2,(0,0,255),2)
+            cv2.circle(frame9,(rx,ry),2,(0,255,0),2)
+
+        # save target contours
+            centroids.append((rx,ry,ca))
+        except ZeroDivisionError:
+            pass
+
+    # make target
+    area = sum([x[2] for x in centroids])
+    mx = 0
+    my = 0
+    if centroids:
+        for x,y,a in centroids:
+            mx += x
+            my += y
+        mx = int(round(mx/len(centroids),0))
+        my = int(round(my/len(centroids),0))
+        tracer.append((counter,mx,my))
+        
+
+    # plot target
+    tr = 50
+    cv2.line(frame9,(mx-tr,my),(mx+tr,my),(0,0,255,0),2)
+    cv2.line(frame9,(mx,my-tr),(mx,my+tr),(0,0,255,0),2)
+    counter = counter+1
+    currentSpeed = 0
+    if counter >=2:
+        if counter==1:
+            counter0,x0,y0 = tracer.pop()
+            counter1,x1,y0 = tracer.pop()
+            currentSpeed= math.sqrt(((x0-x1)**2)+((y0-y1)**2))
+        else:
+            counter0 = counter1
+            x0 = x1
+            y0 = y1
+            #counter1,x1,y1 = tracer.pop()
+            currentSpeed= math.sqrt(((x0-x1)**2)+((y0-y1)**2))
+            speedmap.append(currentSpeed)
+    for item in clicks:
+        cv2.circle(frame9,item,10,(0,0,0),-1)
+        cv2.line(frame9, item, (mx,my), (255,255,255), 5) 
+            
+    
+    text = "Main Target {Here}"
+    cv2.putText(frame9, text+str(counter), (mx,my),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+    cv2.putText(frame9,"X coordinate = " +str(mx) , (mx,my+15),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+    cv2.putText(frame9,"Y coordinate = " +str(my) , (mx,my+30),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+# Showers
+   
+    cv2.imshow('FinalFrame',frame9)
+    if len(speedmap) >1 :
+        print speedmap[len(speedmap)-1]
+    # cv2.imshow('Frame1',frame8)
+    # cv2.imshow('Frame2',frame7)
+    # cv2.imshow('Frame3',frame6)
+    # cv2.imshow('Frame4',frame5)
+    # cv2.imshow('Frame5',frame4)
+    # cv2.imshow('Frame6',frame3)
+    # cv2.imshow('Frame7',frame2)
+    # cv2.imshow('Frame8',frame1)
+    # cv2.imshow('Frame9',frame0)
+    
+# Breaker
+    
+    k = cv2.waitKey(50) & 0xff
+    if k == 27:  # 'esc' key has been pressed, exit program.
+        break
+    if k == 112:  # 'p' has been pressed. this will pause/resume the code.
+        pause = not pause
+        if (pause is True):
+            print("Code is paused. Press 'p' to resume..")
+            while (pause is True):
+                key = cv2.waitKey(30) & 0xff
+                if key == 112:
+                    pause = False
+                    print("Resume code..!!")
+                    break
+# Closer
+
+cv2.destroyAllWindows()
+cap.release()
